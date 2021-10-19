@@ -169,41 +169,45 @@ namespace depthimage_to_laserscan
     template<typename T>
     void convert(const sensor_msgs::ImageConstPtr& depth_msg, const image_geometry::PinholeCameraModel& cam_model,
         const sensor_msgs::LaserScanPtr& scan_msg, const int& scan_height) const{
+      ///NOTE The code below does not account for distortion. You must first get the ray, and then read its angle.
+      /// This does not apply to the pinhole camera.
+
       // Use correct principal point from calibration
       const float center_x = cam_model.cx();
       const float center_y = cam_model.cy();
 
       // Combine unit conversion (if necessary) with scaling by focal length for computing (X,Y)
-      const double unit_scaling = depthimage_to_laserscan::DepthTraits<T>::toMeters( T(1) );
+      const double unit_scaling = depthimage_to_laserscan::DepthTraits<T>::toMeters(static_cast<T>(1));
       const float constant_x = unit_scaling / cam_model.fx();
 
       const T* depth_row = reinterpret_cast<const T*>(&depth_msg->data[0]);
       const int row_step = depth_msg->step / sizeof(T);
 
-      const int offset = (int)(center_y - scan_height/2);
+      const int offset = static_cast<int>(center_y - scan_height / 2);
       depth_row += offset*row_step; // Offset to center of image
 
-      for(int v = offset; v < offset+scan_height_; ++v, depth_row += row_step){
+      for (int v = offset; v < offset+scan_height_; ++v, depth_row += row_step)
+      {
         for (int u = 0; u < (int)depth_msg->width; ++u) // Loop over each pixel in row
         {
           const T depth = depth_row[u];
 
-          double r = depth; // Assign to pass through NaNs and Infs
-          const double th = -atan2((double)(u - center_x) * constant_x, unit_scaling); // Atan2(x, z), but depth divides out
-          const int index = (th - scan_msg->angle_min) / scan_msg->angle_increment;
+          const double ux = static_cast<double>(u + 0.5 - center_x) * constant_x;
+          const double th = atan2(ux, unit_scaling); // Atan2(x, z), but depth divides out
+          const int index = (scan_msg->angle_max - th) / scan_msg->angle_increment;
 
-          if (depthimage_to_laserscan::DepthTraits<T>::valid(depth)){ // Not NaN or Inf
+          if (depthimage_to_laserscan::DepthTraits<T>::valid(depth)) // Not NaN or Inf
+          {
             // Calculate in XYZ
-            double x = (u - center_x) * depth * constant_x;
             double z = depthimage_to_laserscan::DepthTraits<T>::toMeters(depth);
 
             // Calculate actual distance
-            r = hypot(x, z);
-          }
-
-          // Determine if this point should be used.
-          if(use_point(r, scan_msg->ranges[index], scan_msg->range_min, scan_msg->range_max)){
-            scan_msg->ranges[index] = r;
+            double r = hypot(ux * depth, z);
+            // Determine if this point should be used.
+            if (use_point(r, scan_msg->ranges[index], scan_msg->range_min, scan_msg->range_max))
+            {
+              scan_msg->ranges[index] = r;
+            }
           }
         }
       }

@@ -31,6 +31,8 @@
  * Author: Chad Rockey
  */
 
+#include <memory>
+
 #include <depthimage_to_laserscan/DepthImageToLaserScanROS.h>
 
 int main(int argc, char **argv){
@@ -38,7 +40,7 @@ int main(int argc, char **argv){
   ros::NodeHandle n;
   ros::NodeHandle pnh("~");
 
-  depthimage_to_laserscan::DepthImageToLaserScanROS dtl(n, pnh);
+  auto dtl = std::make_shared<depthimage_to_laserscan::DepthImageToLaserScanROS>(n, pnh);
 
   ros::spin();
 
